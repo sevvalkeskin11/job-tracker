@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { KanbanBoard } from "../components/kanban/KanbanBoard";
+import { StatsPanel } from "../components/dashboard/StatsPanel";
 import { useAuth } from "../context/AuthContext";
 
 export function Dashboard() {
@@ -26,6 +27,7 @@ export function Dashboard() {
         </div>
       </header>
       <main className="px-6 py-8">
+        <StatsPanel />
         <KanbanBoard />
       </main>
     </div>
