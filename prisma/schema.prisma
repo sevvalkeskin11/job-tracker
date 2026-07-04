@@ -35,5 +35,6 @@ model Application {
   notes       String?
   createdAt   DateTime          @default(now()) @map("created_at")
 
+  @@index([userId, status])
   @@map("applications")
 }

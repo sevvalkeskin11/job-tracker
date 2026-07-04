@@ -13,4 +13,6 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "1d",
+  redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+  cacheEnabled: process.env.CACHE_ENABLED !== "false",
 };

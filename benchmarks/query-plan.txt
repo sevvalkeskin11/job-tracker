@@ -1,0 +1,87 @@
+Composite Index Karşılaştırması: applications(user_id, status)
+====================================================================
+
+Test ortamı:
+- applications tablosu: 302.001 satır (300.000 "noise" satır + hedef kullanıcı için 2.000 satır)
+- Hedef kullanıcı: explain-target-user-0000000000000001 (2.000 başvuru)
+- Sorgu: GET /api/applications için Prisma'nın ürettiği sorgu
+    SELECT id, user_id, company, position, status, applied_date, notes, created_at
+    FROM applications
+    WHERE user_id = 'explain-target-user-0000000000000001'
+    ORDER BY applied_date DESC;
+- Migration: 20260704175021_add_application_user_status_index
+    CREATE INDEX "applications_user_id_status_idx" ON "applications"("user_id", "status");
+
+--------------------------------------------------------------------
+ÖNCE (index eklenmeden önce) — applications(user_id, status) yok
+--------------------------------------------------------------------
+
+ Gather Merge  (cost=6739.66..6910.01 rows=1460 width=109) (actual time=15.393..19.106 rows=2000 loops=1)
+   Workers Planned: 2
+   Workers Launched: 2
+   Buffers: shared hit=4204
+   ->  Sort  (cost=5739.64..5741.46 rows=730 width=109) (actual time=11.815..11.871 rows=667 loops=3)
+         Sort Key: applied_date DESC
+         Sort Method: quicksort  Memory: 117kB
+         Buffers: shared hit=4204
+         Worker 0:  Sort Method: quicksort  Memory: 117kB
+         Worker 1:  Sort Method: quicksort  Memory: 113kB
+         ->  Parallel Seq Scan on applications  (cost=0.00..5704.92 rows=730 width=109) (actual time=10.073..10.185 rows=667 loops=3)
+               Filter: (user_id = 'explain-target-user-0000000000000001'::text)
+               Rows Removed by Filter: 100000
+               Buffers: shared hit=4132
+ Planning:
+   Buffers: shared hit=95
+ Planning Time: 0.902 ms
+ Execution Time: 19.351 ms
+
+Özet: Planner paralel Seq Scan kullanıyor, 302.001 satırın tamamını (3 worker'a
+bölerek) tarıyor ve her worker ~100.000 satırı filtreden geçiriyor
+("Rows Removed by Filter: 100000"). Toplam 4204 buffer erişimi ve 19.35 ms
+execution time.
+
+--------------------------------------------------------------------
+SONRA (index eklendikten sonra) — applications(user_id, status)
+--------------------------------------------------------------------
+
+ Sort  (cost=3671.20..3676.46 rows=2104 width=109) (actual time=0.899..0.992 rows=2000 loops=1)
+   Sort Key: applied_date DESC
+   Sort Method: quicksort  Memory: 322kB
+   Buffers: shared hit=40 read=4
+   ->  Bitmap Heap Scan on applications  (cost=24.73..3555.07 rows=2104 width=109) (actual time=0.089..0.296 rows=2000 loops=1)
+         Recheck Cond: (user_id = 'explain-target-user-0000000000000001'::text)
+         Heap Blocks: exact=37
+         Buffers: shared hit=37 read=4
+         ->  Bitmap Index Scan on applications_user_id_status_idx  (cost=0.00..24.20 rows=2104 width=0) (actual time=0.078..0.078 rows=2000 loops=1)
+               Index Cond: (user_id = 'explain-target-user-0000000000000001'::text)
+               Buffers: shared read=4
+ Planning:
+   Buffers: shared hit=135
+ Planning Time: 1.036 ms
+ Execution Time: 1.261 ms
+
+Özet: Planner artık applications_user_id_status_idx üzerinden Bitmap Index Scan
+yapıyor (user_id eşitliği index'in en soldaki kolonu olduğu için kullanılabiliyor),
+ardından yalnızca eşleşen ~2000 satır için Bitmap Heap Scan çalıştırıyor.
+Paralel worker'lara gerek kalmıyor. Buffer erişimi 4204 -> 41'e düşüyor.
+
+--------------------------------------------------------------------
+Karşılaştırma
+--------------------------------------------------------------------
+
+| Metrik            | Önce (Seq Scan)     | Sonra (Bitmap Index Scan) |
+|-------------------|---------------------|---------------------------|
+| Execution Time    | 19.351 ms           | 1.261 ms  (~15x daha hızlı) |
+| Plan tipi         | Parallel Seq Scan   | Bitmap Index Scan         |
+| Taranan satır     | 302.001 (tüm tablo) | ~2.000 (sadece eşleşenler) |
+| Shared buffers    | 4204                | 41                        |
+| Worker sayısı     | 2                   | 0                         |
+
+Not: applications(user_id, status) index'i user_id eşitlik filtresi için
+kullanılabiliyor çünkü user_id, index'in en soldaki (leading) kolonu.
+status kolonu bu spesifik sorguda (WHERE sadece user_id'ye göre filtreliyor)
+kullanılmıyor, ancak ileride "status'e göre filtrele" özelliği eklenirse
+(örn. WHERE user_id = $1 AND status = $2) aynı index doğrudan fayda sağlayacak.
+ORDER BY applied_date DESC halihazırda index kapsamında olmadığı için ayrı bir
+Sort adımı gerekiyor; sıralama maliyetini de ortadan kaldırmak istenirse
+(user_id, applied_date) şeklinde ek bir index değerlendirilebilir.

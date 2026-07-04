@@ -1,0 +1,82 @@
+Gerçekçi Veri Seti ile Load Test: Cache'siz vs Cache'li
+====================================================================
+
+Test ortamı:
+- Hedef kullanıcı: load-test@example.com (userId: b8e84154-cf1a-488b-b093-686b3966d7e4)
+- Seed edilen veri: bu kullanıcıya ait 10.000 gerçekçi başvuru kaydı
+  (rastgele şirket/pozisyon/status/appliedDate/notes ile, applications tablosunda)
+- Load test: autocannon, 100 concurrent connection, 30 saniye
+- Endpoint: GET /api/applications (JWT ile authenticated, tüm 10.000 kayıt tek
+  response'da dönüyor - pagination yok)
+- "Cache'siz" senaryo: CACHE_ENABLED=false ile PORT=3001'de ayrı bir instance
+  ayağa kaldırılıp test edildi (mevcut cache'li sunucuya dokunulmadı)
+- "Cache'li" senaryo: mevcut sunucu (PORT=3000, CACHE_ENABLED=true, varsayılan),
+  test öncesi ilgili kullanıcının cache key'i (applications:user:...) flush
+  edilerek soğuk başlangıç ile başlatıldı
+
+--------------------------------------------------------------------
+CACHE'SİZ (CACHE_ENABLED=false, her istek DB'ye gidiyor)
+--------------------------------------------------------------------
+
+┌─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+│ Stat    │ 2.5%    │ 50%     │ 97.5%   │ 99%     │ Avg     │ Stdev   │ Max     │
+├─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+│ Latency │ 2202 ms │ 2202 ms │ 7676 ms │ 7676 ms │ 4939 ms │ 2737 ms │ 7676 ms │
+└─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+┌───────────┬─────┬──────┬─────┬─────────┬────────┬────────┬─────────┐
+│ Stat      │ 1%  │ 2.5% │ 50% │ 97.5%   │ Avg    │ Stdev  │ Min     │
+├───────────┼─────┼──────┼─────┼─────────┼────────┼────────┼─────────┤
+│ Req/Sec   │ 0   │ 0    │ 0   │ 1       │ 0,07   │ 0,25   │ 1       │
+├───────────┼─────┼──────┼─────┼─────────┼────────┼────────┼─────────┤
+│ Bytes/Sec │ 0 B │ 0 B  │ 0 B │ 2.49 MB │ 157 kB │ 589 kB │ 2.23 MB │
+└───────────┴─────┴──────┴─────┴─────────┴────────┴────────┴─────────┘
+
+392 requests in 30.06s, 4.72 MB read
+290 errors (290 timeouts)
+
+--------------------------------------------------------------------
+CACHE'Lİ (CACHE_ENABLED=true, ilk istek DB + Redis'e yazma, sonrası cache'den)
+--------------------------------------------------------------------
+
+┌─────────┬────────┬─────────┬─────────┬─────────┬────────────┬────────────┬─────────┐
+│ Stat    │ 2.5%   │ 50%     │ 97.5%   │ 99%     │ Avg        │ Stdev      │ Max     │
+├─────────┼────────┼─────────┼─────────┼─────────┼────────────┼────────────┼─────────┤
+│ Latency │ 705 ms │ 5153 ms │ 5771 ms │ 5778 ms │ 4607.78 ms │ 1431.68 ms │ 5788 ms │
+└─────────┴────────┴─────────┴─────────┴─────────┴────────────┴────────────┴─────────┘
+┌───────────┬─────┬──────┬─────────┬─────────┬─────────┬─────────┬─────────┐
+│ Stat      │ 1%  │ 2.5% │ 50%     │ 97.5%   │ Avg     │ Stdev   │ Min     │
+├───────────┼─────┼──────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+│ Req/Sec   │ 0   │ 0    │ 17      │ 20      │ 11,07   │ 9,05    │ 1       │
+├───────────┼─────┼──────┼─────────┼─────────┼─────────┼─────────┼─────────┤
+│ Bytes/Sec │ 0 B │ 0 B  │ 42.3 MB │ 49.8 MB │ 27.6 MB │ 22.5 MB │ 2.49 MB │
+└───────────┴─────┴──────┴─────────┴─────────┴─────────┴─────────┴─────────┘
+
+532 requests in 30.07s, 827 MB read
+100 errors (100 timeouts)
+
+--------------------------------------------------------------------
+Karşılaştırma
+--------------------------------------------------------------------
+
+| Metrik              | Cache'siz         | Cache'li           |
+|---------------------|-------------------|---------------------|
+| Toplam istek (30s)  | 392               | 532 (+36%)          |
+| Timeout sayısı      | 290 (%74)         | 100 (%19)           |
+| Avg latency         | 4939 ms           | 4608 ms             |
+| Avg Req/Sec         | 0.07              | 11.07               |
+| Toplam veri (30s)   | 4.72 MB           | 827 MB              |
+
+Değerlendirme:
+Cache, DB sorgusunu ortadan kaldırdığı için throughput'u ve timeout oranını
+belirgin şekilde iyileştiriyor (timeout oranı %74 -> %19, toplam istek +%36).
+Ancak her iki senaryoda da response boyutu (10.000 satırlık JSON, ~2.5 MB/istek)
+100 concurrent connection altında asıl darboğaz haline geliyor: Node tek
+thread'de bu kadar büyük JSON'ı serialize edip network'e yazarken, cache bile
+olsa saniyeler süren gecikmeler ve timeout'lar oluşuyor.
+
+Sonuç: Bu veri boyutunda (kullanıcı başına 10k satır) cache tek başına yeterli
+değil — GET /api/applications endpoint'ine pagination (limit/offset veya
+cursor-based) eklenmeden, büyük kullanıcı hesaplarında endpoint pratikte
+kullanılamaz durumda kalıyor. Cache, küçük/orta veri setlerinde (bkz.
+benchmarks/before.txt vs after.txt, 1 satırlık veri ile %21 iyileşme)
+beklendiği gibi çalışıyor; asıl kazanç payload boyutu küçükken görülüyor.
