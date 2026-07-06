@@ -45,3 +45,15 @@ kontrolü eklendi.
 | Timeout oranı | %74 | %0 |
 | Toplam istek | 392 | 18.000 |
 | Avg latency | Timeout nedeniyle ölçülemedi | 163.68 ms |
+
+## Test Coverage
+
+Jest + Supertest ile 9 test yazıldı (auth: register/login/duplicate-email/wrong-password, 
+applications: CRUD + yetkilendirme + kullanıcı izolasyonu).
+
+| Metrik | Değer |
+|---|---|
+| Test sayısı | 9/9 geçti |
+| Statement coverage | %93.26 |
+| Branch coverage | %66.66 |
+| Function coverage | %93.1 |
