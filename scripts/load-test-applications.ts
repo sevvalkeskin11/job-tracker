@@ -29,8 +29,8 @@ async function getAuthToken(): Promise<string> {
 async function main() {
   const token = await getAuthToken();
 
-  const result = await autocannon({
-    url: `${BASE_URL}/api/applications`,
+ const result = await autocannon({
+    url: `${BASE_URL}/api/applications?page=1&limit=20`,
     connections: 100,
     duration: 30,
     headers: {

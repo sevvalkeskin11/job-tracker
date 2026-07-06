@@ -12,11 +12,14 @@ function applicationsCacheKey(userId: string): string {
 
 async function invalidateApplicationsCache(userId: string): Promise<void> {
   if (!env.cacheEnabled) return;
-  await redis.del(applicationsCacheKey(userId));
+  const pattern = `${applicationsCacheKey(userId)}:page:*`;
+  const keys = await redis.keys(pattern);
+  if (keys.length > 0) {
+    await redis.del(...keys);
+  }
 }
-
-export async function listApplications(userId: string) {
-  const cacheKey = applicationsCacheKey(userId);
+export async function listApplications(userId: string, page: number, limit: number) {
+  const cacheKey = `${applicationsCacheKey(userId)}:page:${page}:limit:${limit}`;
 
   if (env.cacheEnabled) {
     const cached = await redis.get(cacheKey);
@@ -25,16 +28,33 @@ export async function listApplications(userId: string) {
     }
   }
 
-  const applications = await prisma.application.findMany({
-    where: { userId },
-    orderBy: { appliedDate: "desc" },
-  });
+  const skip = (page - 1) * limit;
+
+  const [applications, total] = await Promise.all([
+    prisma.application.findMany({
+      where: { userId },
+      orderBy: { appliedDate: "desc" },
+      skip,
+      take: limit,
+    }),
+    prisma.application.count({ where: { userId } }),
+  ]);
+
+  const result = {
+    data: applications,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+    },
+  };
 
   if (env.cacheEnabled) {
-    await redis.set(cacheKey, JSON.stringify(applications), "EX", CACHE_TTL_SECONDS);
+    await redis.set(cacheKey, JSON.stringify(result), "EX", CACHE_TTL_SECONDS);
   }
 
-  return applications;
+  return result;
 }
 
 export async function getApplication(userId: string, id: string) {

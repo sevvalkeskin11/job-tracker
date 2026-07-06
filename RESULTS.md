@@ -26,4 +26,22 @@
 - Önemli bulgu: cache timeout oranını iyileştiriyor ama asıl darboğaz
   10.000 satırlık JSON response boyutu (~2.5 MB/istek). Bu ölçekte cache tek
   başına yeterli değil — GET /api/applications'a pagination eklenmeli.
+ 
+ ## Pagination (Kök Neden Çözümü)
 
+**Problem:** GET /api/applications endpoint'i tüm sonuçları sınırsız (unpaginated) 
+döndürüyordu. 10.000 kayıtlı bir hesapta bu, ~2.5MB'lık JSON yanıtına ve sistemin 
+yük altında çökmesine (%74 timeout) neden oluyordu. Cache eklemek tek başına 
+yeterli değildi çünkü asıl darboğaz sınırsız veri boyutuydu.
+
+**Çözüm:** page/limit query parametreleriyle sayfalama eklendi (varsayılan 
+limit=20), response'a total/totalPages bilgisi eklendi, frontend'e "Load More" 
+kontrolü eklendi.
+
+**Sonuç (10.000 satır, 100 concurrent connection, 30sn):**
+| Metrik | Öncesi | Sonrası |
+|---|---|---|
+| Avg req/sec | 0.07 | 606.87 |
+| Timeout oranı | %74 | %0 |
+| Toplam istek | 392 | 18.000 |
+| Avg latency | Timeout nedeniyle ölçülemedi | 163.68 ms |

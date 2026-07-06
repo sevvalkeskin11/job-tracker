@@ -2,8 +2,10 @@ import { Request, Response } from "express";
 import * as applicationService from "../services/application.service";
 
 export async function listHandler(req: Request, res: Response): Promise<void> {
-  const applications = await applicationService.listApplications(req.user!.userId);
-  res.status(200).json(applications);
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 20));
+  const result = await applicationService.listApplications(req.user!.userId, page, limit);
+  res.status(200).json(result);
 }
 
 export async function getHandler(req: Request, res: Response): Promise<void> {

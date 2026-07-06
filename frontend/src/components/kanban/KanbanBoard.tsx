@@ -34,20 +34,41 @@ type ModalState = { mode: "create" } | { mode: "edit"; application: Application 
 export function KanbanBoard() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
   const [activeApplication, setActiveApplication] = useState<Application | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
   );
 
   useEffect(() => {
-    fetchApplications()
-      .then(setApplications)
+    fetchApplications(1, 20)
+      .then((result) => {
+        setApplications(result.data);
+        setTotalPages(result.pagination.totalPages);
+        setPage(1);
+      })
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setIsLoading(false));
   }, []);
+
+  async function handleLoadMore() {
+    setIsLoadingMore(true);
+    try {
+      const nextPage = page + 1;
+      const result = await fetchApplications(nextPage, 20);
+      setApplications((apps) => [...apps, ...result.data]);
+      setPage(nextPage);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }
 
   function handleDragStart(event: DragStartEvent) {
     const application = applications.find((a) => a.id === event.active.id);
@@ -140,7 +161,7 @@ export function KanbanBoard() {
               />
             ))}
           </div>
-          <DragOverlay>
+        <DragOverlay>
             {activeApplication && (
               <div className="rotate-2 opacity-90">
                 <ApplicationCardContent application={activeApplication} />
@@ -148,6 +169,19 @@ export function KanbanBoard() {
             )}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {!isLoading && page < totalPages && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={isLoadingMore}
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {isLoadingMore ? "Loading..." : "Load more"}
+          </button>
+        </div>
       )}
 
       {modalState && (

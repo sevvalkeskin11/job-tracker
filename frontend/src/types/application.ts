@@ -17,3 +17,15 @@ export interface ApplicationInput {
   appliedDate: string;
   notes?: string;
 }
+
+export interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
+
+export interface PaginatedApplications {
+  data: Application[];
+  pagination: PaginationInfo;
+}

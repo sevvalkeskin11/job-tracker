@@ -18,9 +18,9 @@ export function StatsPanel() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchApplications()
-      .then(setApplications)
+ useEffect(() => {
+    fetchApplications(1, 1000)
+      .then((result) => setApplications(result.data))
       .catch((err) => setError(getApiErrorMessage(err)))
       .finally(() => setIsLoading(false));
   }, []);

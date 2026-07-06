@@ -10,7 +10,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "load-test:applications": "tsx scripts/load-test-applications.ts"
+    "load-test:applications": "tsx scripts/load-test-applications.ts",
+    "seed:load-test": "tsx scripts/seed-load-test-data.ts",
+    "cleanup:load-test": "tsx scripts/cleanup-load-test-data.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

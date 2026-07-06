@@ -1,8 +1,13 @@
 import { api } from "./api";
-import type { Application, ApplicationInput, ApplicationStatus } from "../types/application";
+import type { Application, ApplicationInput, ApplicationStatus, PaginatedApplications } from "../types/application";
 
-export async function fetchApplications(): Promise<Application[]> {
-  const { data } = await api.get<Application[]>("/applications");
+export async function fetchApplications(
+  page: number = 1,
+  limit: number = 20
+): Promise<PaginatedApplications> {
+  const { data } = await api.get<PaginatedApplications>("/applications", {
+    params: { page, limit },
+  });
   return data;
 }
 
