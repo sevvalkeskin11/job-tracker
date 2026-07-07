@@ -57,3 +57,9 @@ applications: CRUD + yetkilendirme + kullanıcı izolasyonu).
 | Statement coverage | %93.26 |
 | Branch coverage | %66.66 |
 | Function coverage | %93.1 |
+
+## CI/CD
+
+GitHub Actions ile otomatik pipeline kuruldu: her push'ta Postgres + Redis 
+servisleriyle birlikte Prisma migration, TypeScript type-check ve Jest test 
+suite'i otomatik çalışıyor.
